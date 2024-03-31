@@ -173,6 +173,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
     }
 
     const lngs = {
+        zh: { nativeName: '简体中文' },
         en: { nativeName: 'English' },
         it: { nativeName: 'Italiano' }
     };
@@ -191,8 +192,8 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
             .use(i18nextChainedBackend)
             .use(i18nextBrowserLanguageDetector)
             .init({
-                debug: false,
-                supportedLngs: ["en", "it"],
+                debug: true,
+                supportedLngs: ["en", "it", "zh"],
                 fallbackLng: 'en',
                 load: 'languageOnly',
                 backend: {
