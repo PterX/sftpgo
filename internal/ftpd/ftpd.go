@@ -109,6 +109,11 @@ type Binding struct {
 	// Please note that disabling the security checks you will make the FTP service vulnerable to bounce attacks
 	// on active data connections, so change the default value only if you are on a trusted/internal network
 	ActiveConnectionsSecurity int `json:"active_connections_security" mapstructure:"active_connections_security"`
+	// Set to 1 to silently ignore any client requests to perform ASCII translations via the TYPE command.
+	// That is, FTP clients can request ASCII translations, and SFTPGo will respond as the client expects,
+	// but will not actually perform the translation for either uploads or downloads. This behavior can be
+	// useful in circumstances involving older/mainframe clients and EBCDIC files.
+	IgnoreASCIITransferType int `json:"ignore_ascii_transfer_type" mapstructure:"ignore_ascii_transfer_type"`
 	// Debug enables the FTP debug mode. In debug mode, every FTP command will be logged
 	Debug   bool `json:"debug" mapstructure:"debug"`
 	ciphers []uint16
@@ -262,10 +267,7 @@ type ServiceStatus struct {
 type Configuration struct {
 	// Addresses and ports to bind to
 	Bindings []Binding `json:"bindings" mapstructure:"bindings"`
-	// Greeting banner displayed when a connection first comes in
-	Banner string `json:"banner" mapstructure:"banner"`
-	// the contents of the specified file, if any, are diplayed when someone connects to the server.
-	// If set, it overrides the banner string provided by the banner option
+	// The contents of the specified file, if any, are diplayed when someone connects to the server.
 	BannerFile string `json:"banner_file" mapstructure:"banner_file"`
 	// If files containing a certificate and matching private key for the server are provided the server will accept
 	// both plain FTP an explicit FTP over TLS.

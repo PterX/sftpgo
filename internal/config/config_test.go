@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/sftpgo/sdk/kms"
@@ -31,7 +30,6 @@ import (
 	"github.com/drakkan/sftpgo/v2/internal/common"
 	"github.com/drakkan/sftpgo/v2/internal/config"
 	"github.com/drakkan/sftpgo/v2/internal/dataprovider"
-	"github.com/drakkan/sftpgo/v2/internal/ftpd"
 	"github.com/drakkan/sftpgo/v2/internal/httpclient"
 	"github.com/drakkan/sftpgo/v2/internal/httpd"
 	"github.com/drakkan/sftpgo/v2/internal/mfa"
@@ -122,42 +120,6 @@ func TestReadEnvFiles(t *testing.T) {
 	err = os.Unsetenv("SFTPGO_SFTPD__MAX_AUTH_TRIES")
 	assert.NoError(t, err)
 	os.RemoveAll(envd)
-}
-
-func TestEmptyBanner(t *testing.T) {
-	reset()
-
-	confName := tempConfigName + ".json"
-	configFilePath := filepath.Join(configDir, confName)
-	err := config.LoadConfig(configDir, "")
-	assert.NoError(t, err)
-	sftpdConf := config.GetSFTPDConfig()
-	sftpdConf.Banner = " "
-	c := make(map[string]sftpd.Configuration)
-	c["sftpd"] = sftpdConf
-	jsonConf, _ := json.Marshal(c)
-	err = os.WriteFile(configFilePath, jsonConf, os.ModePerm)
-	assert.NoError(t, err)
-	err = config.LoadConfig(configDir, confName)
-	assert.NoError(t, err)
-	sftpdConf = config.GetSFTPDConfig()
-	assert.NotEmpty(t, strings.TrimSpace(sftpdConf.Banner))
-	err = os.Remove(configFilePath)
-	assert.NoError(t, err)
-
-	ftpdConf := config.GetFTPDConfig()
-	ftpdConf.Banner = " "
-	c1 := make(map[string]ftpd.Configuration)
-	c1["ftpd"] = ftpdConf
-	jsonConf, _ = json.Marshal(c1)
-	err = os.WriteFile(configFilePath, jsonConf, os.ModePerm)
-	assert.NoError(t, err)
-	err = config.LoadConfig(configDir, confName)
-	assert.NoError(t, err)
-	ftpdConf = config.GetFTPDConfig()
-	assert.NotEmpty(t, strings.TrimSpace(ftpdConf.Banner))
-	err = os.Remove(configFilePath)
-	assert.NoError(t, err)
 }
 
 func TestEnabledSSHCommands(t *testing.T) {
@@ -964,6 +926,7 @@ func TestFTPDBindingsFromEnv(t *testing.T) {
 	os.Setenv("SFTPGO_FTPD__BINDINGS__9__CLIENT_AUTH_TYPE", "2")
 	os.Setenv("SFTPGO_FTPD__BINDINGS__9__DEBUG", "1")
 	os.Setenv("SFTPGO_FTPD__BINDINGS__9__ACTIVE_CONNECTIONS_SECURITY", "1")
+	os.Setenv("SFTPGO_FTPD__BINDINGS__9__IGNORE_ASCII_TRANSFER_TYPE", "1")
 	os.Setenv("SFTPGO_FTPD__BINDINGS__9__CERTIFICATE_FILE", "cert.crt")
 	os.Setenv("SFTPGO_FTPD__BINDINGS__9__CERTIFICATE_KEY_FILE", "cert.key")
 
@@ -988,6 +951,7 @@ func TestFTPDBindingsFromEnv(t *testing.T) {
 		os.Unsetenv("SFTPGO_FTPD__BINDINGS__9__CLIENT_AUTH_TYPE")
 		os.Unsetenv("SFTPGO_FTPD__BINDINGS__9__DEBUG")
 		os.Unsetenv("SFTPGO_FTPD__BINDINGS__9__ACTIVE_CONNECTIONS_SECURITY")
+		os.Unsetenv("SFTPGO_FTPD__BINDINGS__9__IGNORE_ASCII_TRANSFER_TYPE")
 		os.Unsetenv("SFTPGO_FTPD__BINDINGS__9__CERTIFICATE_FILE")
 		os.Unsetenv("SFTPGO_FTPD__BINDINGS__9__CERTIFICATE_KEY_FILE")
 	})
@@ -1012,6 +976,7 @@ func TestFTPDBindingsFromEnv(t *testing.T) {
 	require.False(t, bindings[0].Debug)
 	require.Equal(t, 1, bindings[0].PassiveConnectionsSecurity)
 	require.Equal(t, 0, bindings[0].ActiveConnectionsSecurity)
+	require.Equal(t, 0, bindings[0].IgnoreASCIITransferType)
 	require.Equal(t, 2203, bindings[1].Port)
 	require.Equal(t, "127.0.1.1", bindings[1].Address)
 	require.True(t, bindings[1].ApplyProxyConfig) // default value
@@ -1029,6 +994,7 @@ func TestFTPDBindingsFromEnv(t *testing.T) {
 	require.Nil(t, bindings[1].TLSCipherSuites)
 	require.Equal(t, 0, bindings[1].PassiveConnectionsSecurity)
 	require.Equal(t, 1, bindings[1].ActiveConnectionsSecurity)
+	require.Equal(t, 1, bindings[1].IgnoreASCIITransferType)
 	require.True(t, bindings[1].Debug)
 	require.Equal(t, "cert.crt", bindings[1].CertificateFile)
 	require.Equal(t, "cert.key", bindings[1].CertificateKeyFile)

@@ -159,7 +159,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
         <div id="upload_files_empty_container" class="d-none mt-10">
             <form id="upload_files_empty_form" action="{{.FilesURL}}?path={{.CurrentDir}}" method="POST" enctype="multipart/form-data">
                 <div class="fv-row">
-                    <div class="dropzone" id="upload_files_empty">
+                    <div class="dropzone mh-350px overflow-auto visibility-auto" id="upload_files_empty">
                         <div class="dz-message needsclick align-items-center">
                             <i class="ki-duotone ki-file-up fs-3x text-primary">
                                 <span class="path1"></span>
@@ -234,6 +234,14 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
     //{{- end}}
     //{{- end}}
     //{{- end}}
+
+    const dzPreviewTemplate = `<div class="d-flex align-items-center mb-2">
+                                 <span class="bullet bullet-dot bg-primary me-2"></span>
+                                 <div class="text-break text-wrap text-left"><span class="fs-5 fw-semibold" data-dz-name></span>&nbsp;(<span class="fs-5 fw-semibold" data-custom-size></span>)</div>
+                               </div>
+                               <div class="dz-error-message d-none" data-dz-errormessage></div>
+                               <div class="dz-progress d-none"><span class="dz-upload" data-dz-uploadprogress></span></div>
+                              `;
 
     //{{- if not .ShareUploadBaseURL}}
     const supportedEditExtensions = ["csv", "bat", "dyalog", "apl", "asc", "pgp", "sig", "asn", "asn1", "b", "bf",
@@ -549,13 +557,13 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
 
         // Private functions
         var initDatatable = function () {
-            $('#errorMsg').addClass("d-none");
             dt = $("#file_manager_list").DataTable({
                 ajax: {
                     url: "{{.DirsURL}}?path={{.CurrentDir}}",
                     dataSrc: "",
                     error: function ($xhr, textStatus, errorThrown) {
                         $(".dataTables_processing").hide();
+                        $('#loader').addClass("d-none");
                         let txt = "";
                         if ($xhr) {
                             let json = $xhr.responseJSON;
@@ -1024,7 +1032,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
             filterSearch.off("keyup");
             filterSearch.on('keyup', function (e) {
                 dt.rows().deselect();
-                dt.search(e.target.value, true, false).draw();
+                dt.search(e.target.value).draw();
             });
         }
 
@@ -1461,9 +1469,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
 
         let filesArray = [];
         for (let i = 0; i < items.length; i++){
-            filesArray.push({
-                name: items[i].targetName
-            });
+            filesArray.push(items[i].targetName);
         }
 
         CheckExist.fire({
@@ -1613,9 +1619,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
 
         let filesArray = [];
         for (let i = 0; i < items.length; i++){
-            filesArray.push({
-                name: items[i].targetName
-            });
+            filesArray.push(items[i].targetName);
         }
 
         CheckExist.fire({
@@ -1854,7 +1858,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
 
         CheckExist.fire({
             operation: "move",
-            files: [{name: newName}],
+            files: [newName],
             path: '{{.CurrentDir}}'
         }).then((result)=>{
             if (result.error) {
@@ -1979,6 +1983,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
         let has_errors = false;
         let index = 0;
         let success = 0;
+        let checkedDirs = [];
         $('#errorMsg').addClass("d-none");
         $('#loading_message').text("");
         KTApp.showPageLoading();
@@ -1996,10 +2001,20 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
 
             let f = files[index];
             let uploadPath;
+            let name = f.name;
+            let mkdirParents = "false";
+            if (f.fullPath){
+                name = f.fullPath;
+                let dirName = name.substr(0, name.lastIndexOf("/"));
+                if (!checkedDirs.includes(dirName)){
+                    mkdirParents = "true";
+                    checkedDirs.push(dirName);
+                }
+            }
             //{{- if .ShareUploadBaseURL}}
-            uploadPath = '{{.ShareUploadBaseURL}}' + encodeURIComponent("/" + f.name);
+            uploadPath = '{{.ShareUploadBaseURL}}' + encodeURIComponent("/" + name)+"?mkdir_parents="+mkdirParents;
             //{{- else}}
-            uploadPath = '{{.FileURL}}?path={{.CurrentDir}}' + encodeURIComponent("/" + f.name);
+            uploadPath = '{{.FileURL}}?path={{.CurrentDir}}' + encodeURIComponent("/" + name)+"&mkdir_parents="+mkdirParents;
             //{{- end}}
             let lastModified;
             try {
@@ -2064,9 +2079,27 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
             });
         }
 
+        let filesArray = [];
+        let dirsArray = [];
+        if (files.length > 0){
+            for (let i = 0; i < files.length; i++){
+                if (files[i].fullPath){
+                    let dirName = files[i].fullPath.split('/')[0];
+                    if (!dirsArray.includes(dirName)){
+                        dirsArray.push(dirName);
+                    }
+                    if (!filesArray.includes(dirName)){
+                        filesArray.push(dirName);
+                    }
+                } else {
+                    filesArray.push(files[i].name);
+                }
+            }
+        }
+
         CheckExist.fire({
             operation: "upload",
-            files: files,
+            files: filesArray,
             path: "{{.CurrentDir}}"
         }).then((result)=> {
             if (result.error) {
@@ -2076,27 +2109,27 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
                 uploadFile();
                 return;
             }
-            let existingFiles = [];
-            let existingDirs = [];
+            let existingEntries = [];
+            let fileOverwriteDirs = [];
             $.each(result.data, function (key, item) {
-                if (item.type === "1") {
-                    existingDirs.push(item.name);
+                if (item.type === "1" && !dirsArray.includes(item.name)) {
+                    fileOverwriteDirs.push(item.name);
                 } else {
-                    existingFiles.push(item.name);
+                    existingEntries.push(item.name);
                 }
             });
-            if (existingDirs.length > 0) {
+            if (fileOverwriteDirs.length > 0) {
                 has_errors = true;
-                setI18NData($('#errorTxt'), "fs.upload.err_dir_overwrite", {val: existingDirs.join(", ")});
+                setI18NData($('#errorTxt'), "fs.upload.err_dir_overwrite", {val: fileOverwriteDirs.join(", ")});
                 $('#errorMsg').removeClass("d-none");
                 uploadFile();
                 return;
             }
-            if (existingFiles.length > 0) {
+            if (existingEntries.length > 0) {
                 KTApp.hidePageLoading();
                 ModalAlert.fire({
                     text: $.t('fs.upload.overwrite_text'),
-                    items: existingFiles,
+                    items: existingEntries,
                     icon: "warning",
                     confirmButtonText: $.t('general.confirm'),
                     cancelButtonText: $.t('general.cancel'),
@@ -2122,15 +2155,9 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
             var promiseResolve;
 
             function doCheck(operation, files, target) {
-                let filesArray = [];
-                if (files && files.length > 0){
-                    for (let i = 0; i < files.length; i++){
-                        filesArray.push(files[i].name);
-                    }
-                }
                 let path = '{{.CheckExistURL}}?op='+encodeURIComponent(operation)+"&path="+target;
                 axios.post(path, {
-                    files: filesArray
+                    files: files
                 }, {
                     headers: {
                         timeout: 15000,
@@ -2176,12 +2203,14 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
         var dropzone =  new Dropzone("#upload_files", {
             url: "{{.FilesURL}}?path={{.CurrentDir}}",
             paramName: "filenames",
-            maxFiles: 250,
+            createImageThumbnails: false,
+            maxFiles: null,
             maxFilesize: null,
             autoQueue: false,
-            addRemoveLinks: true,
+            addRemoveLinks: false,
             autoProcessQueue: false,
             filesizeBase: 1000,
+            previewTemplate: dzPreviewTemplate,
             init: function() {
                 var dropzone = this;
                 $("#upload_files_button").click(function(){
@@ -2191,18 +2220,27 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
         });
 
         dropzone.on("addedfile", file => {
-            file.previewElement.querySelector(".dz-progress").style.display = 'none';
+            for (node of file.previewElement.querySelectorAll("[data-custom-size]")) {
+                node.textContent = fileSizeIEC(file.size);
+            }
+            if (file.fullPath){
+                for (var node of file.previewElement.querySelectorAll("[data-dz-name]")) {
+                    node.textContent = file.fullPath;
+                }
+            }
         });
 
         var dropzoneEmpty =  new Dropzone("#upload_files_empty", {
             url: "{{.FilesURL}}?path={{.CurrentDir}}",
             paramName: "filenames",
-            maxFiles: 250,
+            createImageThumbnails: false,
+            maxFiles: null,
             maxFilesize: null,
             autoQueue: false,
-            addRemoveLinks: true,
+            addRemoveLinks: false,
             autoProcessQueue: false,
             filesizeBase: 1000,
+            previewTemplate: dzPreviewTemplate,
             init: function() {
                 var dropzoneEmpty = this;
                 $("#upload_files_empty_button").click(function(){
@@ -2212,7 +2250,14 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
         });
 
         dropzoneEmpty.on("addedfile", file => {
-            file.previewElement.querySelector(".dz-progress").style.display = 'none';
+            for (node of file.previewElement.querySelectorAll("[data-custom-size]")) {
+                node.textContent = fileSizeIEC(file.size);
+            }
+            if (file.fullPath){
+                for (var node of file.previewElement.querySelectorAll("[data-dz-name]")) {
+                    node.textContent = file.fullPath;
+                }
+            }
         });
 
         $('#modal_video_player').on('hide.bs.modal', function () {
@@ -2406,7 +2451,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
             <div class="modal-body">
                 <form id="upload_files_form" action="{{.FilesURL}}?path={{.CurrentDir}}" method="POST" enctype="multipart/form-data">
                     <div class="fv-row">
-                        <div class="dropzone" id="upload_files">
+                        <div class="dropzone mh-350px overflow-auto visibility-auto" id="upload_files">
                             <div class="dz-message needsclick align-items-center">
                                 <i class="ki-duotone ki-file-up fs-3x text-primary"><span class="path1"></span><span class="path2"></span></i>
                                 <div class="ms-4">

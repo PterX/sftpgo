@@ -23,6 +23,7 @@
     "allowlist_status": 0,
     "allow_self_connections": 0,
     "umask": "",
+    "server_version": "",
     "metadata": {
       "read": 0
     },
@@ -83,7 +84,6 @@
       }
     ],
     "max_auth_tries": 0,
-    "banner": "",
     "host_keys": [],
     "host_certificates": [],
     "host_key_algorithms": [],
@@ -126,10 +126,10 @@
         "tls_cipher_suites": [],
         "passive_connections_security": 0,
         "active_connections_security": 0,
+        "ignore_ascii_transfer_type": 0,
         "debug": false
       }
     ],
-    "banner": "",
     "banner_file": "",
     "active_transfers_port_non_20": true,
     "passive_port_range": {
@@ -198,9 +198,7 @@
     "host": "",
     "port": 0,
     "username": "",
-    "username_file": "",
     "password": "",
-    "password_file": "",
     "sslmode": 0,
     "disable_sni": false,
     "target_session_attrs": "",

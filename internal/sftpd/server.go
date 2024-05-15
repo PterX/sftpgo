@@ -24,7 +24,6 @@ import (
 	"io/fs"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -41,6 +40,7 @@ import (
 	"github.com/drakkan/sftpgo/v2/internal/metric"
 	"github.com/drakkan/sftpgo/v2/internal/plugin"
 	"github.com/drakkan/sftpgo/v2/internal/util"
+	"github.com/drakkan/sftpgo/v2/internal/version"
 	"github.com/drakkan/sftpgo/v2/internal/vfs"
 )
 
@@ -107,8 +107,6 @@ func (b *Binding) HasProxy() bool {
 
 // Configuration for the SFTP server
 type Configuration struct {
-	// Identification string used by the server
-	Banner string `json:"banner" mapstructure:"banner"`
 	// Addresses and ports to bind to
 	Bindings []Binding `json:"bindings" mapstructure:"bindings"`
 	// Maximum number of authentication attempts permitted per connection.
@@ -179,14 +177,8 @@ type Configuration struct {
 	KeyboardInteractiveHook string `json:"keyboard_interactive_auth_hook" mapstructure:"keyboard_interactive_auth_hook"`
 	// PasswordAuthentication specifies whether password authentication is allowed.
 	PasswordAuthentication bool `json:"password_authentication" mapstructure:"password_authentication"`
-	// Virtual root folder prefix to include in all file operations (ex: /files).
-	// The virtual paths used for per-directory permissions, file patterns etc. must not include the folder prefix.
-	// The prefix is only applied to SFTP requests, SCP and other SSH commands will be automatically disabled if
-	// you configure a prefix.
-	// This setting can help some migrations from OpenSSH. It is not recommended for general usage.
-	FolderPrefix     string `json:"folder_prefix" mapstructure:"folder_prefix"`
-	certChecker      *ssh.CertChecker
-	parsedUserCAKeys []ssh.PublicKey
+	certChecker            *ssh.CertChecker
+	parsedUserCAKeys       []ssh.PublicKey
 }
 
 type authenticationError struct {
@@ -250,7 +242,7 @@ func (c *Configuration) getServerConfig() *ssh.ServerConfig {
 
 			return sp, nil
 		},
-		ServerVersion: fmt.Sprintf("SSH-2.0-%s", c.Banner),
+		ServerVersion: fmt.Sprintf("SSH-2.0-%s", version.GetServerVersion("_", false)),
 	}
 
 	if c.PasswordAuthentication {
@@ -345,7 +337,6 @@ func (c *Configuration) Initialize(configDir string) error {
 	c.configureKeyboardInteractiveAuth(serverConfig)
 	c.configureLoginBanner(serverConfig, configDir)
 	c.checkSSHCommands()
-	c.checkFolderPrefix()
 
 	exitChannel := make(chan error, 1)
 	serviceStatus.Bindings = nil
@@ -515,14 +506,14 @@ func (c *Configuration) configureSecurityOptions(serverConfig *ssh.ServerConfig)
 }
 
 func (c *Configuration) configureLoginBanner(serverConfig *ssh.ServerConfig, configDir string) {
-	if len(c.LoginBannerFile) > 0 {
+	if c.LoginBannerFile != "" {
 		bannerFilePath := c.LoginBannerFile
 		if !filepath.IsAbs(bannerFilePath) {
 			bannerFilePath = filepath.Join(configDir, bannerFilePath)
 		}
 		bannerContent, err := os.ReadFile(bannerFilePath)
 		if err == nil {
-			banner := string(bannerContent)
+			banner := util.BytesToString(bannerContent)
 			serverConfig.BannerCallback = func(_ ssh.ConnMetadata) string {
 				return banner
 			}
@@ -598,7 +589,7 @@ func (c *Configuration) AcceptInboundConnection(conn net.Conn, config *ssh.Serve
 	var user dataprovider.User
 
 	// Unmarshal cannot fails here and even if it fails we'll have a user with no permissions
-	json.Unmarshal([]byte(sconn.Permissions.Extensions["sftpgo_user"]), &user) //nolint:errcheck
+	json.Unmarshal(util.StringToBytes(sconn.Permissions.Extensions["sftpgo_user"]), &user) //nolint:errcheck
 
 	loginType := sconn.Permissions.Extensions["sftpgo_login_method"]
 	connectionID := hex.EncodeToString(sconn.SessionID())
@@ -612,7 +603,8 @@ func (c *Configuration) AcceptInboundConnection(conn net.Conn, config *ssh.Serve
 
 	logger.Log(logger.LevelInfo, common.ProtocolSSH, connectionID,
 		"User %q logged in with %q, from ip %q, client version %q, negotiated algorithms: %+v",
-		user.Username, loginType, ipAddr, string(sconn.ClientVersion()), sconn.Conn.(ssh.AlgorithmsConnMetadata).Algorithms())
+		user.Username, loginType, ipAddr, util.BytesToString(sconn.ClientVersion()),
+		sconn.Conn.(ssh.AlgorithmsConnMetadata).Algorithms())
 	dataprovider.UpdateLastLogin(&user)
 
 	sshConnection := common.NewSSHConnection(connectionID, conn)
@@ -648,16 +640,15 @@ func (c *Configuration) AcceptInboundConnection(conn net.Conn, config *ssh.Serve
 
 				switch req.Type {
 				case "subsystem":
-					if string(req.Payload[4:]) == "sftp" {
+					if util.BytesToString(req.Payload[4:]) == "sftp" {
 						ok = true
 						connection := &Connection{
 							BaseConnection: common.NewBaseConnection(connID, common.ProtocolSFTP, conn.LocalAddr().String(),
 								conn.RemoteAddr().String(), user),
-							ClientVersion: string(sconn.ClientVersion()),
+							ClientVersion: util.BytesToString(sconn.ClientVersion()),
 							RemoteAddr:    conn.RemoteAddr(),
 							LocalAddr:     conn.LocalAddr(),
 							channel:       channel,
-							folderPrefix:  c.FolderPrefix,
 						}
 						go c.handleSftpConnection(channel, connection)
 					}
@@ -666,11 +657,10 @@ func (c *Configuration) AcceptInboundConnection(conn net.Conn, config *ssh.Serve
 					connection := Connection{
 						BaseConnection: common.NewBaseConnection(connID, "sshd_exec", conn.LocalAddr().String(),
 							conn.RemoteAddr().String(), user),
-						ClientVersion: string(sconn.ClientVersion()),
+						ClientVersion: util.BytesToString(sconn.ClientVersion()),
 						RemoteAddr:    conn.RemoteAddr(),
 						LocalAddr:     conn.LocalAddr(),
 						channel:       channel,
-						folderPrefix:  c.FolderPrefix,
 					}
 					ok = processSSHCommand(req.Payload, &connection, c.EnabledSSHCommands)
 				}
@@ -710,17 +700,6 @@ func (c *Configuration) handleSftpConnection(channel ssh.Channel, connection *Co
 }
 
 func (c *Configuration) createHandlers(connection *Connection) sftp.Handlers {
-	if c.FolderPrefix != "" {
-		prefixMiddleware := newPrefixMiddleware(c.FolderPrefix, connection)
-
-		return sftp.Handlers{
-			FileGet:  prefixMiddleware,
-			FilePut:  prefixMiddleware,
-			FileCmd:  prefixMiddleware,
-			FileList: prefixMiddleware,
-		}
-	}
-
 	return sftp.Handlers{
 		FileGet:  connection,
 		FilePut:  connection,
@@ -838,7 +817,7 @@ func loginUser(user *dataprovider.User, loginMethod, publicKey string, conn ssh.
 	}
 	p := &ssh.Permissions{}
 	p.Extensions = make(map[string]string)
-	p.Extensions["sftpgo_user"] = string(json)
+	p.Extensions["sftpgo_user"] = util.BytesToString(json)
 	p.Extensions["sftpgo_login_method"] = loginMethod
 	return p, nil
 }
@@ -860,19 +839,6 @@ func (c *Configuration) checkSSHCommands() {
 	}
 	c.EnabledSSHCommands = sshCommands
 	logger.Debug(logSender, "", "enabled SSH commands %v", c.EnabledSSHCommands)
-}
-
-func (c *Configuration) checkFolderPrefix() {
-	if c.FolderPrefix != "" {
-		c.FolderPrefix = path.Join("/", c.FolderPrefix)
-		if c.FolderPrefix == "/" {
-			c.FolderPrefix = ""
-		}
-	}
-	if c.FolderPrefix != "" {
-		c.EnabledSSHCommands = nil
-		logger.Debug(logSender, "", "folder prefix %q configured, SSH commands are disabled", c.FolderPrefix)
-	}
 }
 
 func (c *Configuration) generateDefaultHostKeys(configDir string) error {
@@ -1215,7 +1181,7 @@ func (c *Configuration) validatePasswordCredentials(conn ssh.ConnMetadata, pass 
 	var sshPerm *ssh.Permissions
 
 	ipAddr := util.GetIPFromRemoteAddress(conn.RemoteAddr().String())
-	if user, err = dataprovider.CheckUserAndPass(conn.User(), string(pass), ipAddr, common.ProtocolSSH); err == nil {
+	if user, err = dataprovider.CheckUserAndPass(conn.User(), util.BytesToString(pass), ipAddr, common.ProtocolSSH); err == nil {
 		sshPerm, err = loginUser(&user, method, "", conn)
 	}
 	user.Username = conn.User()
@@ -1248,7 +1214,9 @@ func (c *Configuration) validateKeyboardInteractiveCredentials(conn ssh.ConnMeta
 
 func updateLoginMetrics(user *dataprovider.User, ip, method string, err error) {
 	metric.AddLoginAttempt(method)
-	if err != nil {
+	if err == nil {
+		plugin.Handler.NotifyLogEvent(notifier.LogEventTypeLoginOK, common.ProtocolSSH, user.Username, ip, "", err)
+	} else {
 		logger.ConnectionFailedLog(user.Username, ip, method, common.ProtocolSSH, err.Error())
 		if method != dataprovider.SSHLoginMethodPublicKey {
 			// some clients try all available public keys for a user, we

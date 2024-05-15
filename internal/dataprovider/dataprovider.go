@@ -319,32 +319,6 @@ type PasswordValidation struct {
 	Users PasswordValidationRules `json:"users" mapstructure:"users"`
 }
 
-// FilesystemProvider defines the supported storage filesystems
-type FilesystemProvider struct {
-	sdk.FilesystemProvider
-}
-
-// I18nString returns the translation key
-func (p FilesystemProvider) I18nString() string {
-	switch p.FilesystemProvider {
-	case sdk.LocalFilesystemProvider:
-		return util.I18nStorageLocal
-	case sdk.S3FilesystemProvider:
-		return util.I18nStorageS3
-	case sdk.GCSFilesystemProvider:
-		return util.I18nStorageGCS
-	case sdk.AzureBlobFilesystemProvider:
-		return util.I18nStorageAzureBlob
-	case sdk.CryptedFilesystemProvider:
-		return util.I18nStorageLocalEncrypted
-	case sdk.SFTPFilesystemProvider:
-		return util.I18nStorageSFTP
-	case sdk.HTTPFilesystemProvider:
-		return util.I18nStorageHTTP
-	}
-	return ""
-}
-
 type wrappedFolder struct {
 	Folder vfs.BaseVirtualFolder
 }
@@ -392,11 +366,9 @@ type Config struct {
 	// Database port
 	Port int `json:"port" mapstructure:"port"`
 	// Database username
-	Username     string `json:"username" mapstructure:"username"`
-	UsernameFile string `json:"username_file" mapstructure:"username_file"`
+	Username string `json:"username" mapstructure:"username"`
 	// Database password
-	Password     string `json:"password" mapstructure:"password"`
-	PasswordFile string `json:"password_file" mapstructure:"password_file"`
+	Password string `json:"password" mapstructure:"password"`
 	// Used for drivers mysql and postgresql.
 	// 0 disable SSL/TLS connections.
 	// 1 require ssl.
@@ -915,22 +887,6 @@ func Initialize(cnf Config, basePath string, checkAdmins bool) error {
 	config.Actions.ExecuteOn = util.RemoveDuplicates(config.Actions.ExecuteOn, true)
 	config.Actions.ExecuteFor = util.RemoveDuplicates(config.Actions.ExecuteFor, true)
 
-	if config.UsernameFile != "" {
-		user, err := util.ReadConfigFromFile(config.UsernameFile, basePath)
-		if err != nil {
-			return err
-		}
-		config.Username = user
-	}
-
-	if config.PasswordFile != "" {
-		password, err := util.ReadConfigFromFile(config.PasswordFile, basePath)
-		if err != nil {
-			return err
-		}
-		config.Password = password
-	}
-
 	cnf.BackupsPath = getConfigPath(cnf.BackupsPath, basePath)
 	if cnf.BackupsPath == "" {
 		return fmt.Errorf("required directory is invalid, backup path %q", cnf.BackupsPath)
@@ -1030,6 +986,20 @@ func validateHooks() error {
 // GetBackupsPath returns the normalized backups path
 func GetBackupsPath() string {
 	return config.BackupsPath
+}
+
+// GetProviderFromValue returns the FilesystemProvider matching the specified value.
+// If no match is found LocalFilesystemProvider is returned.
+func GetProviderFromValue(value string) sdk.FilesystemProvider {
+	val, err := strconv.Atoi(value)
+	if err != nil {
+		return sdk.LocalFilesystemProvider
+	}
+	result := sdk.FilesystemProvider(val)
+	if sdk.IsProviderSupported(result) {
+		return result
+	}
+	return sdk.LocalFilesystemProvider
 }
 
 func initializeHashingAlgo(cnf *Config) error {
@@ -2581,9 +2551,8 @@ func Close() error {
 }
 
 func createProvider(basePath string) error {
-	var err error
 	sqlPlaceholders = getSQLPlaceholders()
-	if err = validateSQLTablesPrefix(); err != nil {
+	if err := validateSQLTablesPrefix(); err != nil {
 		return err
 	}
 	logSender = fmt.Sprintf("dataprovider_%v", config.Driver)
@@ -2598,7 +2567,11 @@ func createProvider(basePath string) error {
 	case BoltDataProviderName:
 		return initializeBoltProvider(basePath)
 	case MemoryDataProviderName:
-		initializeMemoryProvider(basePath)
+		if err := initializeMemoryProvider(basePath); err != nil {
+			msg := fmt.Sprintf("provider initialized but data loading failed: %v", err)
+			logger.Warn(logSender, "", msg)
+			logger.WarnToConsole(msg)
+		}
 		return nil
 	default:
 		return fmt.Errorf("unsupported data provider: %v", config.Driver)
@@ -3064,27 +3037,31 @@ func validateFilterProtocols(filters *sdk.BaseUserFilters) error {
 	return nil
 }
 
-func validateTLSCerts(certs []string) error {
+func validateTLSCerts(certs []string) ([]string, error) {
+	var validateCerts []string
 	for idx, cert := range certs {
+		if cert == "" {
+			continue
+		}
 		derBlock, _ := pem.Decode([]byte(cert))
 		if derBlock == nil {
-			return util.NewI18nError(
+			return nil, util.NewI18nError(
 				util.NewValidationError(fmt.Sprintf("invalid TLS certificate %d", idx)),
 				util.I18nErrorInvalidTLSCert,
 			)
 		}
-		cert, err := x509.ParseCertificate(derBlock.Bytes)
+		crt, err := x509.ParseCertificate(derBlock.Bytes)
 		if err != nil {
-			return util.NewI18nError(
+			return nil, util.NewI18nError(
 				util.NewValidationError(fmt.Sprintf("error parsing TLS certificate %d", idx)),
 				util.I18nErrorInvalidTLSCert,
 			)
 		}
-		if cert.PublicKeyAlgorithm == x509.RSA {
-			if rsaCert, ok := cert.PublicKey.(*rsa.PublicKey); ok {
+		if crt.PublicKeyAlgorithm == x509.RSA {
+			if rsaCert, ok := crt.PublicKey.(*rsa.PublicKey); ok {
 				if size := rsaCert.N.BitLen(); size < 2048 {
 					providerLog(logger.LevelError, "rsa cert with size %d not accepted, minimum 2048", size)
-					return util.NewI18nError(
+					return nil, util.NewI18nError(
 						util.NewValidationError(fmt.Sprintf("invalid size %d for rsa cert at position %d, minimum 2048",
 							size, idx)),
 						util.I18nErrorKeySizeInvalid,
@@ -3092,8 +3069,9 @@ func validateTLSCerts(certs []string) error {
 				}
 			}
 		}
+		validateCerts = append(validateCerts, cert)
 	}
-	return nil
+	return validateCerts, nil
 }
 
 func validateBaseFilters(filters *sdk.BaseUserFilters) error {
@@ -3120,9 +3098,11 @@ func validateBaseFilters(filters *sdk.BaseUserFilters) error {
 			return util.NewValidationError(fmt.Sprintf("invalid TLS username: %q", filters.TLSUsername))
 		}
 	}
-	if err := validateTLSCerts(filters.TLSCerts); err != nil {
+	certs, err := validateTLSCerts(filters.TLSCerts)
+	if err != nil {
 		return err
 	}
+	filters.TLSCerts = certs
 	for _, opts := range filters.WebClient {
 		if !util.Contains(sdk.WebClientOptions, opts) {
 			return util.NewValidationError(fmt.Sprintf("invalid web client options %q", opts))
@@ -3275,7 +3255,7 @@ func hashPlainPassword(plainPwd string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("bcrypt hashing error: %w", err)
 		}
-		return string(pwd), nil
+		return util.BytesToString(pwd), nil
 	}
 	pwd, err := argon2id.CreateHash(plainPwd, argon2Params)
 	if err != nil {
@@ -3387,32 +3367,35 @@ func isPasswordOK(user *User, password string) (bool, error) {
 	match := false
 	updatePwd := true
 	var err error
-	if strings.HasPrefix(user.Password, bcryptPwdPrefix) {
-		if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+
+	switch {
+	case strings.HasPrefix(user.Password, bcryptPwdPrefix):
+		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 			return match, ErrInvalidCredentials
 		}
 		match = true
 		updatePwd = config.PasswordHashing.Algo != HashingAlgoBcrypt
-	} else if strings.HasPrefix(user.Password, argonPwdPrefix) {
+	case strings.HasPrefix(user.Password, argonPwdPrefix):
 		match, err = argon2id.ComparePasswordAndHash(password, user.Password)
 		if err != nil {
 			providerLog(logger.LevelError, "error comparing password with argon hash: %v", err)
 			return match, err
 		}
 		updatePwd = config.PasswordHashing.Algo != HashingAlgoArgon2ID
-	} else if util.IsStringPrefixInSlice(user.Password, unixPwdPrefixes) {
+	case util.IsStringPrefixInSlice(user.Password, unixPwdPrefixes):
 		match, err = compareUnixPasswordAndHash(user, password)
 		if err != nil {
 			return match, err
 		}
-	} else if util.IsStringPrefixInSlice(user.Password, pbkdfPwdPrefixes) {
+	case util.IsStringPrefixInSlice(user.Password, pbkdfPwdPrefixes):
 		match, err = comparePbkdf2PasswordAndHash(password, user.Password)
 		if err != nil {
 			return match, err
 		}
-	} else if util.IsStringPrefixInSlice(user.Password, digestPwdPrefixes) {
+	case util.IsStringPrefixInSlice(user.Password, digestPwdPrefixes):
 		match = compareDigestPasswordAndHash(user, password)
 	}
+
 	if err == nil && match {
 		cachedUserPasswords.Add(user.Username, password, user.Password)
 		if updatePwd {
@@ -3446,7 +3429,7 @@ func checkUserAndTLSCertificate(user *User, protocol string, tlsCert *x509.Certi
 	switch protocol {
 	case protocolFTP, protocolWebDAV:
 		for _, cert := range user.Filters.TLSCerts {
-			derBlock, _ := pem.Decode([]byte(cert))
+			derBlock, _ := pem.Decode(util.StringToBytes(cert))
 			if derBlock != nil && bytes.Equal(derBlock.Bytes, tlsCert.Raw) {
 				return *user, nil
 			}
@@ -3568,7 +3551,7 @@ func checkUserAndPubKey(user *User, pubKey []byte, isSSHCert bool) (User, string
 		return *user, "", ErrInvalidCredentials
 	}
 	for idx, key := range user.PublicKeys {
-		storedKey, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(key))
+		storedKey, comment, _, _, err := ssh.ParseAuthorizedKey(util.StringToBytes(key))
 		if err != nil {
 			providerLog(logger.LevelError, "error parsing stored public key %d for user %s: %v", idx, user.Username, err)
 			return *user, "", err
@@ -4076,7 +4059,7 @@ func getPasswordHookResponse(username, password, ip, protocol string) ([]byte, e
 		fmt.Sprintf("SFTPGO_AUTHD_IP=%s", ip),
 		fmt.Sprintf("SFTPGO_AUTHD_PROTOCOL=%s", protocol),
 	)
-	return getCmdOutput(cmd, "check_password_hook")
+	return cmd.Output()
 }
 
 func executeCheckPasswordHook(username, password, ip, protocol string) (checkPasswordResponse, error) {
@@ -4132,12 +4115,12 @@ func getPreLoginHookResponse(loginMethod, ip, protocol string, userAsJSON []byte
 
 	cmd := exec.CommandContext(ctx, config.PreLoginHook, args...)
 	cmd.Env = append(env,
-		fmt.Sprintf("SFTPGO_LOGIND_USER=%s", string(userAsJSON)),
+		fmt.Sprintf("SFTPGO_LOGIND_USER=%s", util.BytesToString(userAsJSON)),
 		fmt.Sprintf("SFTPGO_LOGIND_METHOD=%s", loginMethod),
 		fmt.Sprintf("SFTPGO_LOGIND_IP=%s", ip),
 		fmt.Sprintf("SFTPGO_LOGIND_PROTOCOL=%s", protocol),
 	)
-	return getCmdOutput(cmd, "pre_login_hook")
+	return cmd.Output()
 }
 
 func executePreLoginHook(username, loginMethod, ip, protocol string, oidcTokenFields *map[string]any) (User, error) {
@@ -4179,7 +4162,7 @@ func executePreLoginHook(username, loginMethod, ip, protocol string, oidcTokenFi
 	recoveryCodes := u.Filters.RecoveryCodes
 	err = json.Unmarshal(out, &u)
 	if err != nil {
-		return u, fmt.Errorf("invalid pre-login hook response %q, error: %v", string(out), err)
+		return u, fmt.Errorf("invalid pre-login hook response %q, error: %v", util.BytesToString(out), err)
 	}
 	u.ID = userID
 	u.UsedQuotaSize = userUsedQuotaSize
@@ -4274,7 +4257,7 @@ func ExecutePostLoginHook(user *User, loginMethod, ip, protocol string, err erro
 
 		cmd := exec.CommandContext(ctx, config.PostLoginHook, args...)
 		cmd.Env = append(env,
-			fmt.Sprintf("SFTPGO_LOGIND_USER=%s", string(userAsJSON)),
+			fmt.Sprintf("SFTPGO_LOGIND_USER=%s", util.BytesToString(userAsJSON)),
 			fmt.Sprintf("SFTPGO_LOGIND_IP=%s", ip),
 			fmt.Sprintf("SFTPGO_LOGIND_METHOD=%s", loginMethod),
 			fmt.Sprintf("SFTPGO_LOGIND_STATUS=%s", status),
@@ -4343,7 +4326,7 @@ func getExternalAuthResponse(username, password, pkey, keyboardInteractive, ip, 
 	cmd := exec.CommandContext(ctx, config.ExternalAuthHook, args...)
 	cmd.Env = append(env,
 		fmt.Sprintf("SFTPGO_AUTHD_USERNAME=%s", username),
-		fmt.Sprintf("SFTPGO_AUTHD_USER=%s", string(userAsJSON)),
+		fmt.Sprintf("SFTPGO_AUTHD_USER=%s", util.BytesToString(userAsJSON)),
 		fmt.Sprintf("SFTPGO_AUTHD_IP=%s", ip),
 		fmt.Sprintf("SFTPGO_AUTHD_PASSWORD=%s", password),
 		fmt.Sprintf("SFTPGO_AUTHD_PUBLIC_KEY=%s", pkey),
@@ -4351,7 +4334,7 @@ func getExternalAuthResponse(username, password, pkey, keyboardInteractive, ip, 
 		fmt.Sprintf("SFTPGO_AUTHD_TLS_CERT=%s", strings.ReplaceAll(tlsCert, "\n", "\\n")),
 		fmt.Sprintf("SFTPGO_AUTHD_KEYBOARD_INTERACTIVE=%v", keyboardInteractive))
 
-	return getCmdOutput(cmd, "external_auth_hook")
+	return cmd.Output()
 }
 
 func updateUserFromExtAuthResponse(user *User, password, pkey string) {
@@ -4633,30 +4616,6 @@ func checkReservedUsernames(username string) error {
 		return util.NewValidationError("this username is reserved")
 	}
 	return nil
-}
-
-func getCmdOutput(cmd *exec.Cmd, sender string) ([]byte, error) {
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	err = cmd.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	scanner := bufio.NewScanner(stderr)
-	for scanner.Scan() {
-		if out := scanner.Text(); out != "" {
-			logger.Log(logger.LevelWarn, sender, "", out)
-		}
-	}
-	err = cmd.Wait()
-	return stdout.Bytes(), err
 }
 
 func providerLog(level logger.LogLevel, format string, v ...any) {

@@ -131,7 +131,6 @@ const (
 	rolesPath                      = "/api/v2/roles"
 	ipListsPath                    = "/api/v2/iplists"
 	healthzPath                    = "/healthz"
-	robotsTxtPath                  = "/robots.txt"
 	webBasePath                    = "/web"
 	webBasePathAdmin               = "/web/admin"
 	webAdminSetupPath              = "/web/admin/setup"
@@ -11136,6 +11135,7 @@ func TestWebAPIChangeUserProfileMock(t *testing.T) {
 	profileReq["email"] = email
 	profileReq["description"] = description
 	profileReq["public_keys"] = []string{testPubKey, testPubKey1}
+	profileReq["tls_certs"] = []string{httpsCert}
 	asJSON, err := json.Marshal(profileReq)
 	assert.NoError(t, err)
 	req, err = http.NewRequest(http.MethodPut, userProfilePath, bytes.NewBuffer(asJSON))
@@ -11159,6 +11159,10 @@ func TestWebAPIChangeUserProfileMock(t *testing.T) {
 	if assert.True(t, ok, profileReq) {
 		assert.Len(t, val, 2)
 	}
+	val, ok = profileReq["tls_certs"].([]any)
+	if assert.True(t, ok, profileReq) {
+		assert.Len(t, val, 1)
+	}
 	// set an invalid email
 	profileReq = make(map[string]any)
 	profileReq["email"] = "notavalidemail"
@@ -11181,10 +11185,22 @@ func TestWebAPIChangeUserProfileMock(t *testing.T) {
 	rr = executeRequest(req)
 	checkResponseCode(t, http.StatusBadRequest, rr)
 	assert.Contains(t, rr.Body.String(), "Validation error: error parsing public key")
+	// set an invalid TLS certificate
+	profileReq = make(map[string]any)
+	profileReq["tls_certs"] = []string{"not a TLS cert"}
+	asJSON, err = json.Marshal(profileReq)
+	assert.NoError(t, err)
+	req, err = http.NewRequest(http.MethodPut, userProfilePath, bytes.NewBuffer(asJSON))
+	assert.NoError(t, err)
+	setBearerForReq(req, token)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusBadRequest, rr)
+	assert.Contains(t, rr.Body.String(), "Validation error: invalid TLS certificate")
 
 	user, _, err = httpdtest.GetUserByUsername(user.Username, http.StatusOK)
 	assert.NoError(t, err)
-	user.Filters.WebClient = []string{sdk.WebClientAPIKeyAuthChangeDisabled, sdk.WebClientPubKeyChangeDisabled}
+	user.Filters.WebClient = []string{sdk.WebClientAPIKeyAuthChangeDisabled, sdk.WebClientPubKeyChangeDisabled,
+		sdk.WebClientTLSCertChangeDisabled}
 	user.Email = email
 	user.Description = description
 	user.Filters.AllowAPIKeyAuth = true
@@ -11198,6 +11214,7 @@ func TestWebAPIChangeUserProfileMock(t *testing.T) {
 	profileReq["email"] = email
 	profileReq["description"] = description + "_mod" //nolint:goconst
 	profileReq["public_keys"] = []string{testPubKey}
+	profileReq["tls_certs"] = []string{}
 	asJSON, err = json.Marshal(profileReq)
 	assert.NoError(t, err)
 	req, err = http.NewRequest(http.MethodPut, userProfilePath, bytes.NewBuffer(asJSON))
@@ -11221,6 +11238,10 @@ func TestWebAPIChangeUserProfileMock(t *testing.T) {
 	val, ok = profileReq["public_keys"].([]any)
 	if assert.True(t, ok, profileReq) {
 		assert.Len(t, val, 2)
+	}
+	val, ok = profileReq["tls_certs"].([]any)
+	if assert.True(t, ok, profileReq) {
+		assert.Len(t, val, 1)
 	}
 
 	user, _, err = httpdtest.GetUserByUsername(user.Username, http.StatusOK)
@@ -11258,7 +11279,7 @@ func TestWebAPIChangeUserProfileMock(t *testing.T) {
 	assert.Len(t, profileReq["public_keys"].([]any), 1)
 	// finally disable all profile permissions
 	user.Filters.WebClient = []string{sdk.WebClientAPIKeyAuthChangeDisabled, sdk.WebClientInfoChangeDisabled,
-		sdk.WebClientPubKeyChangeDisabled}
+		sdk.WebClientPubKeyChangeDisabled, sdk.WebClientTLSCertChangeDisabled}
 	_, _, err = httpdtest.UpdateUser(user, http.StatusOK, "")
 	assert.NoError(t, err)
 	req, err = http.NewRequest(http.MethodPut, userProfilePath, bytes.NewBuffer(asJSON))
@@ -12510,13 +12531,6 @@ func TestHealthCheck(t *testing.T) {
 	rr := executeRequest(req)
 	checkResponseCode(t, http.StatusOK, rr)
 	assert.Equal(t, "ok", rr.Body.String())
-}
-
-func TestRobotsTxtCheck(t *testing.T) {
-	req, _ := http.NewRequest(http.MethodGet, robotsTxtPath, nil)
-	rr := executeRequest(req)
-	checkResponseCode(t, http.StatusOK, rr)
-	assert.Equal(t, "User-agent: *\nDisallow: /", rr.Body.String())
 }
 
 func TestGetWebRootMock(t *testing.T) {
@@ -14554,11 +14568,13 @@ func TestShareUploadSingle(t *testing.T) {
 func TestShareReadWrite(t *testing.T) {
 	u := getTestUser()
 	u.Filters.StartDirectory = path.Join("/start", "dir")
+	u.Permissions["/start/dir/limited"] = []string{dataprovider.PermListItems}
 	user, _, err := httpdtest.AddUser(u, http.StatusCreated)
 	assert.NoError(t, err)
 	token, err := getJWTAPIUserTokenFromTestServer(defaultUsername, defaultPassword)
 	assert.NoError(t, err)
 	testFileName := "test.txt"
+	testSubDirs := "/sub/dir"
 
 	share := dataprovider.Share{
 		Name:      "test share rw",
@@ -14599,6 +14615,27 @@ func TestShareReadWrite(t *testing.T) {
 	rr = executeRequest(req)
 	checkResponseCode(t, http.StatusCreated, rr)
 	assert.FileExists(t, filepath.Join(user.GetHomeDir(), user.Filters.StartDirectory, testFileName))
+
+	req, err = http.NewRequest(http.MethodPost, path.Join(sharesPath, objectID)+"/"+url.PathEscape(path.Join(testSubDirs, testFileName)), bytes.NewBuffer(content))
+	assert.NoError(t, err)
+	req.SetBasicAuth(defaultUsername, defaultPassword)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusNotFound, rr)
+
+	req, err = http.NewRequest(http.MethodPost, path.Join(sharesPath, objectID)+"/"+url.PathEscape(path.Join(testSubDirs, testFileName))+"?mkdir_parents=true",
+		bytes.NewBuffer(content))
+	assert.NoError(t, err)
+	req.SetBasicAuth(defaultUsername, defaultPassword)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusCreated, rr)
+	assert.FileExists(t, filepath.Join(user.GetHomeDir(), user.Filters.StartDirectory, testSubDirs, testFileName))
+
+	req, err = http.NewRequest(http.MethodPost, path.Join(sharesPath, objectID)+"/"+url.PathEscape(path.Join("limited", "sub", testFileName))+"?mkdir_parents=true",
+		bytes.NewBuffer(content))
+	assert.NoError(t, err)
+	req.SetBasicAuth(defaultUsername, defaultPassword)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusForbidden, rr)
 
 	req, err = http.NewRequest(http.MethodPost, path.Join(webClientPubSharesPath, objectID, "/browse/exist?path=%2F"), bytes.NewBuffer(asJSON))
 	assert.NoError(t, err)
@@ -19273,6 +19310,7 @@ func TestWebUserProfile(t *testing.T) {
 	form.Set("description", description)
 	form.Set("public_keys[0][public_key]", testPubKey)
 	form.Set("public_keys[1][public_key]", testPubKey1)
+	form.Set("tls_certs[0][tls_cert]", httpsCert)
 	// no csrf token
 	req, err := http.NewRequest(http.MethodPost, webClientProfilePath, bytes.NewBuffer([]byte(form.Encode())))
 	assert.NoError(t, err)
@@ -19296,6 +19334,7 @@ func TestWebUserProfile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, user.Filters.AllowAPIKeyAuth)
 	assert.Len(t, user.PublicKeys, 2)
+	assert.Len(t, user.Filters.TLSCerts, 1)
 	assert.Equal(t, email, user.Email)
 	assert.Equal(t, description, user.Description)
 
@@ -19308,8 +19347,18 @@ func TestWebUserProfile(t *testing.T) {
 	rr = executeRequest(req)
 	checkResponseCode(t, http.StatusOK, rr)
 	assert.Contains(t, rr.Body.String(), util.I18nErrorInvalidEmail)
-	// invalid public key
+	// invalid tls cert
 	form.Set("email", email)
+	form.Set("tls_certs[0][tls_cert]", "not a TLS cert")
+	req, _ = http.NewRequest(http.MethodPost, webClientProfilePath, bytes.NewBuffer([]byte(form.Encode())))
+	req.RemoteAddr = defaultRemoteAddr
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setJWTCookieForReq(req, token)
+	rr = executeRequest(req)
+	checkResponseCode(t, http.StatusOK, rr)
+	assert.Contains(t, rr.Body.String(), util.I18nErrorInvalidTLSCert)
+	// invalid public key
+	form.Set("tls_certs[0][tls_cert]", httpsCert)
 	form.Set("public_keys[0][public_key]", "invalid")
 	req, _ = http.NewRequest(http.MethodPost, webClientProfilePath, bytes.NewBuffer([]byte(form.Encode())))
 	req.RemoteAddr = defaultRemoteAddr
@@ -19340,16 +19389,19 @@ func TestWebUserProfile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, user.Filters.AllowAPIKeyAuth)
 	assert.Len(t, user.PublicKeys, 1)
+	assert.Len(t, user.Filters.TLSCerts, 1)
 	assert.Equal(t, email, user.Email)
 	assert.Equal(t, description, user.Description)
 
-	user.Filters.WebClient = []string{sdk.WebClientAPIKeyAuthChangeDisabled, sdk.WebClientPubKeyChangeDisabled}
+	user.Filters.WebClient = []string{sdk.WebClientAPIKeyAuthChangeDisabled,
+		sdk.WebClientPubKeyChangeDisabled, sdk.WebClientTLSCertChangeDisabled}
 	_, _, err = httpdtest.UpdateUser(user, http.StatusOK, "")
 	assert.NoError(t, err)
 	token, err = getJWTWebClientTokenFromTestServer(defaultUsername, defaultPassword)
 	assert.NoError(t, err)
 	form.Set("public_keys[0][public_key]", testPubKey)
 	form.Set("public_keys[1][public_key]", testPubKey1)
+	form.Set("tls_certs[0][tls_cert]", "")
 	req, _ = http.NewRequest(http.MethodPost, webClientProfilePath, bytes.NewBuffer([]byte(form.Encode())))
 	req.RemoteAddr = defaultRemoteAddr
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -19361,6 +19413,7 @@ func TestWebUserProfile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, user.Filters.AllowAPIKeyAuth)
 	assert.Len(t, user.PublicKeys, 1)
+	assert.Len(t, user.Filters.TLSCerts, 1)
 	assert.Equal(t, email, user.Email)
 	assert.Equal(t, description, user.Description)
 
@@ -19382,11 +19435,12 @@ func TestWebUserProfile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, user.Filters.AllowAPIKeyAuth)
 	assert.Len(t, user.PublicKeys, 2)
+	assert.Len(t, user.Filters.TLSCerts, 0)
 	assert.Equal(t, email, user.Email)
 	assert.Equal(t, description, user.Description)
 	// finally disable all profile permissions
 	user.Filters.WebClient = []string{sdk.WebClientAPIKeyAuthChangeDisabled, sdk.WebClientInfoChangeDisabled,
-		sdk.WebClientPubKeyChangeDisabled}
+		sdk.WebClientPubKeyChangeDisabled, sdk.WebClientTLSCertChangeDisabled}
 	_, _, err = httpdtest.UpdateUser(user, http.StatusOK, "")
 	assert.NoError(t, err)
 	token, err = getJWTWebClientTokenFromTestServer(defaultUsername, defaultPassword)
@@ -23315,11 +23369,10 @@ func TestWebEventAction(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), util.I18nError500Message)
 	form.Set("data_retention[10][folder_retention_val]", "24")
 	form.Set("data_retention[10][folder_retention_options][]", "1")
-	form.Add("data_retention[10][folder_retention_options][]", "2")
 	form.Set("data_retention[11][folder_retention_path]", "../p2")
 	form.Set("data_retention[11][folder_retention_val]", "48")
 	form.Set("data_retention[11][folder_retention_options][]", "1")
-	form.Set("data_retention[12][folder_retention_options][]", "2") // ignored
+	form.Set("data_retention[13][folder_retention_options][]", "1") // ignored
 	req, err = http.NewRequest(http.MethodPost, path.Join(webAdminEventActionPath, action.Name),
 		bytes.NewBuffer([]byte(form.Encode())))
 	assert.NoError(t, err)
@@ -23337,11 +23390,9 @@ func TestWebEventAction(t *testing.T) {
 			case "/p1":
 				assert.Equal(t, 24, folder.Retention)
 				assert.True(t, folder.DeleteEmptyDirs)
-				assert.True(t, folder.IgnoreUserPermissions)
 			case "/p2":
 				assert.Equal(t, 48, folder.Retention)
 				assert.True(t, folder.DeleteEmptyDirs)
-				assert.False(t, folder.IgnoreUserPermissions)
 			default:
 				t.Errorf("unexpected folder path %v", folder.Path)
 			}

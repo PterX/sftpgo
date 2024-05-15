@@ -150,6 +150,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
                     dataSrc: "",
                     error: function ($xhr, textStatus, errorThrown) {
                         $(".dataTables_processing").hide();
+                        $('#loader').addClass("d-none");
                         let txt = "";
                         if ($xhr) {
                             let json = $xhr.responseJSON;
@@ -301,7 +302,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
             filterSearch.off("keyup");
             filterSearch.on('keyup', function (e) {
                 dt.rows().deselect();
-                dt.search(e.target.value, true, false).draw();
+                dt.search(e.target.value).draw();
             });
             handleColVisibilityCheckbox($('#checkColMembers'), 1);
             handleColVisibilityCheckbox($('#checkColDesc'), 2);

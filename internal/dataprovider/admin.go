@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -298,7 +297,7 @@ func (a *Admin) hashPassword() error {
 			if err != nil {
 				return err
 			}
-			a.Password = string(pwd)
+			a.Password = util.BytesToString(pwd)
 		} else {
 			pwd, err := argon2id.CreateHash(a.Password, argon2Params)
 			if err != nil {
@@ -435,19 +434,6 @@ func (a *Admin) validate() error {
 	return a.validateGroups()
 }
 
-// GetGroupsAsString returns the user's groups as a string
-func (a *Admin) GetGroupsAsString() string {
-	if len(a.Groups) == 0 {
-		return ""
-	}
-	var groups []string
-	for _, g := range a.Groups {
-		groups = append(groups, g.Name)
-	}
-	sort.Strings(groups)
-	return strings.Join(groups, ",")
-}
-
 // CheckPassword verifies the admin password
 func (a *Admin) CheckPassword(password string) (bool, error) {
 	if config.PasswordCaching {
@@ -577,19 +563,6 @@ func (a *Admin) HasPermission(perm string) bool {
 		return true
 	}
 	return util.Contains(a.Permissions, perm)
-}
-
-// GetPermissionsAsString returns permission as string
-func (a *Admin) GetPermissionsAsString() string {
-	return strings.Join(a.Permissions, ", ")
-}
-
-// GetLastLoginAsString returns the last login as string
-func (a *Admin) GetLastLoginAsString() string {
-	if a.LastLogin > 0 {
-		return util.GetTimeFromMsecSinceEpoch(a.LastLogin).UTC().Format(iso8601UTCFormat)
-	}
-	return ""
 }
 
 // GetAllowedIPAsString returns the allowed IP as comma separated string

@@ -170,6 +170,7 @@
         "api_key_auth_help": "Allow to impersonate yourself, in REST API, using an API key",
         "pub_keys": "Public keys",
         "pub_key_placeholder": "Paste a public key here",
+        "pub_keys_help": "Public keys can be used for SFTP authentication",
         "verify": "Verify",
         "problems": "Having problems?",
         "allowed_ip_mask": "Allowed IP/Mask",
@@ -360,7 +361,7 @@
             "err_403": "$t(fs.upload.err_generic). $t(fs.err_403)",
             "err_429": "$t(fs.upload.err_generic). $t(fs.err_429)",
             "err_dir_overwrite": "$t(fs.upload.err_generic). There are directories with the same name as the files: {{- val}}",
-            "overwrite_text": "File conflict detected. Do you want to overwrite the following files?"
+            "overwrite_text": "Conflict detected. Do you want to overwrite the following files/directories?"
         },
         "quota_usage": {
             "title": "Quota usage",
@@ -539,6 +540,7 @@
         "expires_in": "Expires in",
         "expires_in_help": "Account expiration as number of days from the creation. 0 means no expiration",
         "tls_certs": "TLS certificates",
+        "tls_certs_help": "TLS certificates can be used for FTP and/or WebDAV authentication",
         "tls_cert_help": "Paste a PEM encoded TLS certificate here",
         "tls_cert_invalid": "Invalid TLS certificate",
         "template_title": "Create one or more new users from this template",
@@ -900,6 +902,7 @@
         "add": "Addition",
         "update": "Update",
         "login_failed": "Login failed",
+        "login_ok": "Login succeeded",
         "login_missing_user": "Login with non-existent user",
         "no_login_tried": "No login tried",
         "algo_negotiation_failed": "Algorithm negotiation failed",
@@ -983,7 +986,6 @@
         "data_retention": "Data retention",
         "data_retention_help": "Set the data retention, as hours, per path. Retention applies recursively. Setting 0 as retention means excluding the specified path. \"Ignore user permissions\" defines whether to delete files even if the user does not have the \"delete\" permission, by default files will be skipped if the user does not have the \"delete\" permission",
         "delete_empty_dirs": "Delete empty dirs",
-        "ignore_user_perms": "Ignore user permissions",
         "fs_action": "Filesystem action",
         "paths_src_dst_help": "Paths as seen by SFTPGo users. Placeholders are supported. The required permissions are granted automatically",
         "source_path": "Source",

@@ -811,7 +811,7 @@ func (p *EventParams) getStringReplacements(addObjectData, jsonEscaped bool) []s
 	if addObjectData {
 		data, err := p.Object.RenderAsJSON(p.Event != operationDelete)
 		if err == nil {
-			dataString := string(data)
+			dataString := util.BytesToString(data)
 			replacements[len(replacements)-3] = p.getStringReplacement(dataString, false)
 			replacements[len(replacements)-1] = p.getStringReplacement(dataString, true)
 		}
@@ -826,7 +826,7 @@ func (p *EventParams) getStringReplacements(addObjectData, jsonEscaped bool) []s
 	if len(p.Metadata) > 0 {
 		data, err := json.Marshal(p.Metadata)
 		if err == nil {
-			dataString := string(data)
+			dataString := util.BytesToString(data)
 			replacements[len(replacements)-3] = p.getStringReplacement(dataString, false)
 			replacements[len(replacements)-1] = p.getStringReplacement(dataString, true)
 		}
@@ -1200,7 +1200,7 @@ func checkUserConditionOptions(user *dataprovider.User, conditions *dataprovider
 	return true
 }
 
-// checkConditionPatterns returns false if patterns are defined and no match is found
+// checkEventConditionPatterns returns false if patterns are defined and no match is found
 func checkEventConditionPatterns(name string, patterns []dataprovider.ConditionPattern) bool {
 	if len(patterns) == 0 {
 		return true
@@ -1286,9 +1286,9 @@ func writeHTTPPart(m *multipart.Writer, part dataprovider.HTTPPart, h textproto.
 		if strings.Contains(strings.ToLower(cType), "application/json") {
 			replacements := params.getStringReplacements(addObjectData, true)
 			jsonReplacer := strings.NewReplacer(replacements...)
-			_, err = partWriter.Write([]byte(replaceWithReplacer(part.Body, jsonReplacer)))
+			_, err = partWriter.Write(util.StringToBytes(replaceWithReplacer(part.Body, jsonReplacer)))
 		} else {
-			_, err = partWriter.Write([]byte(replaceWithReplacer(part.Body, replacer)))
+			_, err = partWriter.Write(util.StringToBytes(replaceWithReplacer(part.Body, replacer)))
 		}
 		if err != nil {
 			eventManagerLog(logger.LevelError, "unable to write part %q, err: %v", part.Name, err)
@@ -1466,7 +1466,8 @@ func executeHTTPRuleAction(c dataprovider.EventActionHTTPConfig, params *EventPa
 		endpoint, time.Since(startTime), resp.StatusCode)
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > http.StatusNoContent {
 		if rb, err := io.ReadAll(io.LimitReader(resp.Body, 2048)); err == nil {
-			eventManagerLog(logger.LevelDebug, "error notification response from endpoint %q: %s", endpoint, string(rb))
+			eventManagerLog(logger.LevelDebug, "error notification response from endpoint %q: %s",
+				endpoint, util.BytesToString(rb))
 		}
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -2500,7 +2501,7 @@ func executeAdminCheckAction(c *dataprovider.EventActionIDPAccountCheck, params 
 	data := replaceWithReplacer(c.TemplateAdmin, replacer)
 
 	var newAdmin dataprovider.Admin
-	err = json.Unmarshal([]byte(data), &newAdmin)
+	err = json.Unmarshal(util.StringToBytes(data), &newAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -2532,7 +2533,7 @@ func executeUserCheckAction(c *dataprovider.EventActionIDPAccountCheck, params *
 	data := replaceWithReplacer(c.TemplateUser, replacer)
 
 	var newUser dataprovider.User
-	err = json.Unmarshal([]byte(data), &newUser)
+	err = json.Unmarshal(util.StringToBytes(data), &newUser)
 	if err != nil {
 		return nil, err
 	}

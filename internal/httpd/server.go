@@ -1087,6 +1087,7 @@ func (s *httpdServer) updateContextFromCookie(r *http.Request) *http.Request {
 
 func (s *httpdServer) parseHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", version.GetServerVersion("/", false))
 		ipAddr := util.GetIPFromRemoteAddress(r.RemoteAddr)
 		var ip net.IP
 		isUnixSocket := filepath.IsAbs(s.binding.Address)
@@ -1282,10 +1283,6 @@ func (s *httpdServer) initializeRouter() {
 
 	s.router.Get(healthzPath, func(w http.ResponseWriter, r *http.Request) {
 		render.PlainText(w, r, "ok")
-	})
-
-	s.router.Get(robotsTxtPath, func(w http.ResponseWriter, r *http.Request) {
-		render.PlainText(w, r, "User-agent: *\nDisallow: /")
 	})
 
 	if hasHTTPSRedirect {

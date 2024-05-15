@@ -29,7 +29,7 @@ info:
     SFTPGo supports groups to simplify the administration of multiple accounts by letting you assign settings once to a group, instead of multiple times to each individual user.
     The SFTPGo WebClient allows end users to change their credentials, browse and manage their files in the browser and setup two-factor authentication which works with Authy, Google Authenticator and other compatible apps.
     From the WebClient each authorized user can also create HTTP/S links to externally share files and folders securely, by setting limits to the number of downloads/uploads, protecting the share with a password, limiting access by source IP address, setting an automatic expiration date.
-  version: 2.5.99-dev
+  version: 2.6.0
   contact:
     name: API support
     url: 'https://github.com/drakkan/sftpgo'
@@ -5133,6 +5133,7 @@ components:
       type: string
       enum:
         - publickey-change-disabled
+        - tls-cert-change-disabled
         - write-disabled
         - mfa-disabled
         - password-change-disabled
@@ -5144,6 +5145,7 @@ components:
       description: |
         Options:
           * `publickey-change-disabled` - changing SSH public keys is not allowed
+          * `tls-cert-change-disabled` - changing TLS certificates is not allowed
           * `write-disabled` - upload, rename, delete are not allowed even if the user has permissions for these actions
           * `mfa-disabled` - enabling multi-factor authentication is not allowed. This option cannot be set if the user has MFA already enabled
           * `password-change-disabled` - changing password is not allowed
@@ -5214,12 +5216,14 @@ components:
         - 2
         - 3
         - 4
+        - 5
       description: >
         Event status:
           * `1` - Login failed
           * `2` - Login failed non-existent user
           * `3` - No login tried
           * `4` - Algorithm negotiation failed
+          * `5` - Login succeeded
     FsEventStatus:
       type: integer
       enum:
@@ -5573,6 +5577,9 @@ components:
         role_arn:
           type: string
           description: 'Optional IAM Role ARN to assume'
+        session_token:
+          type: string
+          description: 'Optional Session token that is a part of temporary security credentials provisioned by AWS STS'
         endpoint:
           type: string
           description: optional endpoint
@@ -6444,6 +6451,15 @@ components:
             Active connections security:
               * `0` - require matching peer IP addresses of control and data connection
               * `1` - disable any checks
+        ignore_ascii_transfer_type:
+          type: integer
+          enum:
+            - 0
+            - 1
+          description: |
+            Ignore client requests to perform ASCII translations:
+              * `0` - ASCII translations are enabled
+              * `1` - ASCII translations are silently ignored
         debug:
           type: boolean
           description: 'If enabled any FTP command will be logged'

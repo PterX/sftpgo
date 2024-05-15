@@ -41,7 +41,6 @@ import (
 	"github.com/drakkan/sftpgo/v2/internal/smtp"
 	"github.com/drakkan/sftpgo/v2/internal/telemetry"
 	"github.com/drakkan/sftpgo/v2/internal/util"
-	"github.com/drakkan/sftpgo/v2/internal/version"
 	"github.com/drakkan/sftpgo/v2/internal/webdavd"
 )
 
@@ -58,8 +57,6 @@ const (
 
 var (
 	globalConf             globalConfig
-	defaultSFTPDBanner     = fmt.Sprintf("SFTPGo_%v", version.Get().Version)
-	defaultFTPDBanner      = fmt.Sprintf("SFTPGo %v ready", version.Get().Version)
 	defaultInstallCodeHint = "Installation code"
 	defaultSFTPDBinding    = sftpd.Binding{
 		Address:          "",
@@ -232,6 +229,7 @@ func Init() {
 			},
 			RateLimitersConfig: []common.RateLimiterConfig{defaultRateLimiter},
 			Umask:              "",
+			ServerVersion:      "",
 			Metadata: common.MetadataConfig{
 				Read: 0,
 			},
@@ -255,7 +253,6 @@ func Init() {
 		SFTPD: sftpd.Configuration{
 			Bindings:                          []sftpd.Binding{defaultSFTPDBinding},
 			MaxAuthTries:                      0,
-			Banner:                            defaultSFTPDBanner,
 			HostKeys:                          []string{},
 			HostCertificates:                  []string{},
 			HostKeyAlgorithms:                 []string{},
@@ -270,11 +267,9 @@ func Init() {
 			KeyboardInteractiveAuthentication: true,
 			KeyboardInteractiveHook:           "",
 			PasswordAuthentication:            true,
-			FolderPrefix:                      "",
 		},
 		FTPD: ftpd.Configuration{
 			Bindings:                 []ftpd.Binding{defaultFTPDBinding},
-			Banner:                   defaultFTPDBanner,
 			BannerFile:               "",
 			ActiveTransfersPortNon20: true,
 			PassivePortRange: ftpd.PortRange{
@@ -326,9 +321,7 @@ func Init() {
 			Host:               "",
 			Port:               0,
 			Username:           "",
-			UsernameFile:       "",
 			Password:           "",
-			PasswordFile:       "",
 			ConnectionString:   "",
 			SQLTablesPrefix:    "",
 			SSLMode:            0,
@@ -761,12 +754,6 @@ func isExternalAuthScopeValid() bool {
 }
 
 func resetInvalidConfigs() {
-	if strings.TrimSpace(globalConf.SFTPD.Banner) == "" {
-		globalConf.SFTPD.Banner = defaultSFTPDBanner
-	}
-	if strings.TrimSpace(globalConf.FTPD.Banner) == "" {
-		globalConf.FTPD.Banner = defaultFTPDBanner
-	}
 	if strings.TrimSpace(globalConf.HTTPDConfig.Setup.InstallationCodeHint) == "" {
 		globalConf.HTTPDConfig.Setup.InstallationCodeHint = defaultInstallCodeHint
 	}
@@ -1203,6 +1190,12 @@ func getFTPDBindingSecurityFromEnv(idx int, binding *ftpd.Binding) bool {
 	activeSecurity, ok := lookupIntFromEnv(fmt.Sprintf("SFTPGO_FTPD__BINDINGS__%v__ACTIVE_CONNECTIONS_SECURITY", idx), 0)
 	if ok {
 		binding.ActiveConnectionsSecurity = int(activeSecurity)
+		isSet = true
+	}
+
+	ignoreASCIITransferType, ok := lookupIntFromEnv(fmt.Sprintf("SFTPGO_FTPD__BINDINGS__%d__IGNORE_ASCII_TRANSFER_TYPE", idx), 0)
+	if ok {
+		binding.IgnoreASCIITransferType = int(ignoreASCIITransferType)
 		isSet = true
 	}
 
@@ -2003,6 +1996,7 @@ func setViperDefaults() {
 	viper.SetDefault("common.defender.entries_soft_limit", globalConf.Common.DefenderConfig.EntriesSoftLimit)
 	viper.SetDefault("common.defender.entries_hard_limit", globalConf.Common.DefenderConfig.EntriesHardLimit)
 	viper.SetDefault("common.umask", globalConf.Common.Umask)
+	viper.SetDefault("common.server_version", globalConf.Common.ServerVersion)
 	viper.SetDefault("common.metadata.read", globalConf.Common.Metadata.Read)
 	viper.SetDefault("acme.email", globalConf.ACME.Email)
 	viper.SetDefault("acme.key_type", globalConf.ACME.KeyType)
@@ -2015,7 +2009,6 @@ func setViperDefaults() {
 	viper.SetDefault("acme.http01_challenge.proxy_header", globalConf.ACME.HTTP01Challenge.ProxyHeader)
 	viper.SetDefault("acme.tls_alpn01_challenge.port", globalConf.ACME.TLSALPN01Challenge.Port)
 	viper.SetDefault("sftpd.max_auth_tries", globalConf.SFTPD.MaxAuthTries)
-	viper.SetDefault("sftpd.banner", globalConf.SFTPD.Banner)
 	viper.SetDefault("sftpd.host_keys", globalConf.SFTPD.HostKeys)
 	viper.SetDefault("sftpd.host_certificates", globalConf.SFTPD.HostCertificates)
 	viper.SetDefault("sftpd.host_key_algorithms", globalConf.SFTPD.HostKeyAlgorithms)
@@ -2030,8 +2023,6 @@ func setViperDefaults() {
 	viper.SetDefault("sftpd.keyboard_interactive_authentication", globalConf.SFTPD.KeyboardInteractiveAuthentication)
 	viper.SetDefault("sftpd.keyboard_interactive_auth_hook", globalConf.SFTPD.KeyboardInteractiveHook)
 	viper.SetDefault("sftpd.password_authentication", globalConf.SFTPD.PasswordAuthentication)
-	viper.SetDefault("sftpd.folder_prefix", globalConf.SFTPD.FolderPrefix)
-	viper.SetDefault("ftpd.banner", globalConf.FTPD.Banner)
 	viper.SetDefault("ftpd.banner_file", globalConf.FTPD.BannerFile)
 	viper.SetDefault("ftpd.active_transfers_port_non_20", globalConf.FTPD.ActiveTransfersPortNon20)
 	viper.SetDefault("ftpd.passive_port_range.start", globalConf.FTPD.PassivePortRange.Start)
@@ -2068,9 +2059,7 @@ func setViperDefaults() {
 	viper.SetDefault("data_provider.host", globalConf.ProviderConf.Host)
 	viper.SetDefault("data_provider.port", globalConf.ProviderConf.Port)
 	viper.SetDefault("data_provider.username", globalConf.ProviderConf.Username)
-	viper.SetDefault("data_provider.username_file", globalConf.ProviderConf.UsernameFile)
 	viper.SetDefault("data_provider.password", globalConf.ProviderConf.Password)
-	viper.SetDefault("data_provider.password_file", globalConf.ProviderConf.PasswordFile)
 	viper.SetDefault("data_provider.sslmode", globalConf.ProviderConf.SSLMode)
 	viper.SetDefault("data_provider.disable_sni", globalConf.ProviderConf.DisableSNI)
 	viper.SetDefault("data_provider.target_session_attrs", globalConf.ProviderConf.TargetSessionAttrs)

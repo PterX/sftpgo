@@ -931,12 +931,15 @@ func (c *sftpConnection) OpenConnection() error {
 	return c.openConnNoLock()
 }
 
-func (c *sftpConnection) getSigner() (ssh.Signer, error) {
-	if c.config.KeyPassphrase.GetPayload() != "" {
-		return ssh.ParsePrivateKeyWithPassphrase([]byte(c.config.PrivateKey.GetPayload()),
-			[]byte(c.config.KeyPassphrase.GetPayload()))
+func (c *sftpConnection) getKeySigner() (ssh.Signer, error) {
+	privPayload := c.config.PrivateKey.GetPayload()
+	if privPayload == "" {
+		return nil, nil
 	}
-	return ssh.ParsePrivateKey([]byte(c.config.PrivateKey.GetPayload()))
+	if key := c.config.KeyPassphrase.GetPayload(); key != "" {
+		return ssh.ParsePrivateKeyWithPassphrase([]byte(privPayload), []byte(key))
+	}
+	return ssh.ParsePrivateKey([]byte(privPayload))
 }
 
 func (c *sftpConnection) openConnNoLock() error {
@@ -973,18 +976,18 @@ func (c *sftpConnection) openConnNoLock() error {
 			logger.Log(logger.LevelWarn, c.logSender, "", "login without host key validation, please provide at least a fingerprint!")
 			return nil
 		},
-		Timeout:       10 * time.Second,
-		ClientVersion: fmt.Sprintf("SSH-2.0-SFTPGo_%v", version.Get().Version),
+		Timeout:       15 * time.Second,
+		ClientVersion: fmt.Sprintf("SSH-2.0-%s", version.GetServerVersion("_", false)),
 	}
-	if c.config.PrivateKey.GetPayload() != "" {
-		signer, err := c.getSigner()
-		if err != nil {
-			return fmt.Errorf("sftpfs: unable to parse the private key: %w", err)
-		}
+	signer, err := c.getKeySigner()
+	if err != nil {
+		return fmt.Errorf("sftpfs: unable to parse the private key: %w", err)
+	}
+	if signer != nil {
 		clientConfig.Auth = append(clientConfig.Auth, ssh.PublicKeys(signer))
 	}
-	if c.config.Password.GetPayload() != "" {
-		clientConfig.Auth = append(clientConfig.Auth, ssh.Password(c.config.Password.GetPayload()))
+	if pwd := c.config.Password.GetPayload(); pwd != "" {
+		clientConfig.Auth = append(clientConfig.Auth, ssh.Password(pwd))
 	}
 	supportedAlgos := ssh.SupportedAlgorithms()
 	insecureAlgos := ssh.InsecureAlgorithms()

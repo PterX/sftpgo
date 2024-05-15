@@ -114,7 +114,11 @@ func NewS3Fs(connectionID, localTempDir, mountPath string, s3Config S3FsConfig) 
 			return fs, err
 		}
 		awsConfig.Credentials = aws.NewCredentialsCache(
-			credentials.NewStaticCredentialsProvider(fs.config.AccessKey, fs.config.AccessSecret.GetPayload(), ""))
+			credentials.NewStaticCredentialsProvider(
+				fs.config.AccessKey,
+				fs.config.AccessSecret.GetPayload(),
+				fs.config.SessionToken),
+		)
 	}
 
 	fs.setConfigDefaults()
@@ -125,7 +129,7 @@ func NewS3Fs(connectionID, localTempDir, mountPath string, s3Config S3FsConfig) 
 		awsConfig.Credentials = creds
 	}
 	fs.svc = s3.NewFromConfig(awsConfig, func(o *s3.Options) {
-		o.AppID = fmt.Sprintf("SFTPGo-%s", version.Get().CommitHash)
+		o.AppID = version.GetVersionHash()
 		o.UsePathStyle = fs.config.ForcePathStyle
 		if fs.config.Endpoint != "" {
 			o.BaseEndpoint = aws.String(fs.config.Endpoint)

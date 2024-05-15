@@ -279,6 +279,38 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
         return window.location.protocol+"//"+window.location.hostname;
     }
 
+    function onFilesystemChanged(val){
+        const supportedFs = ["local", "s3", "gcs", "azblob", "crypt", "sftp", "http"];
+        let fsName = "local";
+        switch (val){
+            case '1':
+                fsName = "s3";
+                break;
+            case '2':
+                fsName = "gcs";
+                break;
+            case '3':
+                fsName = "azblob";
+                break;
+            case '4':
+                fsName = "crypt";
+                break;
+            case '5':
+                fsName = "sftp";
+                break;
+            case '6':
+                fsName = "http";
+                break;
+        }
+        for (let i = 0; i < supportedFs.length; i++){
+            if (supportedFs[i] == fsName){
+                $('.form-group.fsconfig-'+fsName).show();
+            } else {
+                $('.form-group.fsconfig-'+supportedFs[i]).hide();
+            }
+        }
+    }
+
     KTUtil.onDOMContentLoaded(function () {
         var dismissErrorBtn = $('#id_dismiss_error_msg');
         if (dismissErrorBtn){
@@ -341,6 +373,13 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
 
     .shortcut {
         font-family: monospace; color: #666;
+    }
+
+    .overflow-auto {
+        overflow: auto;
+    }
+    .visibility-auto {
+        content-visibility: auto;
     }
 </style>
 {{- end}}
@@ -843,7 +882,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
                         <div id="kt_app_footer" class="app-footer">
                             <div class="app-container  container-fluid d-flex flex-column flex-md-row flex-center flex-md-stack py-3 align-items-center justify-content-center">
                                 <div class="text-gray-900 order-2 order-md-1">
-                                    <span class="text-gray-700 fw-semibold me-1">SFTPGo {{.Version}}</span>
+                                    <span class="text-gray-700 fw-semibold me-1">{{.Version}}</span>
                                 </div>
                             </div>
                         </div>
@@ -900,12 +939,12 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
         {{- block "modals" .}}{{- end}}
 		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/assets/plugins/global/plugins.bundle.js"></script>
 		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/assets/js/scripts.bundle.js"></script>
-        <script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18next.js"></script>
-		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/jquery-i18next.js"></script>
-		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextBrowserLanguageDetector.js"></script>
-		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextChainedBackend.js"></script>
-        <script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextLocalStorageBackend.js"></script>
-        <script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextHttpBackend.js"></script>
+        <script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18next.min.js"></script>
+		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/jquery-i18next.min.js"></script>
+		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextBrowserLanguageDetector.min.js"></script>
+		<script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextChainedBackend.min.js"></script>
+        <script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextLocalStorageBackend.min.js"></script>
+        <script {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}} src="{{.StaticURL}}/vendor/i18next/i18nextHttpBackend.min.js"></script>
 		{{- template "basejs" . }}
         <script type="text/javascript" {{- if .CSPNonce}} nonce="{{.CSPNonce}}"{{- end}}>
             var ModalAlert = function () {
@@ -970,7 +1009,7 @@ explicit grant from the SFTPGo Team (support@sftpgo.com).
                             itemsList.removeClass("d-none");
                             $.each(params.items, function(key, item) {
                                 itemText = escapeHTML(item);
-                                itemsList.append(`<li class="d-flex align-items-center py-2 fw-bold fs-6 text-gray-800"><span class="bullet bullet-dot me-5"></span>${itemText}</li>`);
+                                itemsList.append(`<li class="d-flex align-items-center py-2 fw-bold fs-6 text-gray-800"><span class="bullet bullet-dot bg-primary me-2"></span>${itemText}</li>`);
                             });
                         }
 

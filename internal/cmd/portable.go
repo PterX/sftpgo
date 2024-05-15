@@ -112,7 +112,7 @@ $ sftpgo portable
 Please take a look at the usage below to customize the serving parameters`,
 		Run: func(_ *cobra.Command, _ []string) {
 			portableDir := directoryToServe
-			fsProvider := sdk.GetProviderByName(portableFsProvider)
+			fsProvider := dataprovider.GetProviderFromValue(convertFsProvider())
 			if !filepath.IsAbs(portableDir) {
 				if fsProvider == sdk.LocalFilesystemProvider {
 					portableDir, _ = filepath.Abs(portableDir)
@@ -196,7 +196,7 @@ Please take a look at the usage below to customize the serving parameters`,
 					fmt.Printf("Unable to read password file %q: %v", portablePasswordFile, err)
 					os.Exit(1)
 				}
-				pwd = strings.TrimSpace(string(content))
+				pwd = strings.TrimSpace(util.BytesToString(content))
 			}
 			service.SetGraceTime(graceTime)
 			service := service.Service{
@@ -227,7 +227,7 @@ Please take a look at the usage below to customize the serving parameters`,
 						},
 					},
 					FsConfig: vfs.Filesystem{
-						Provider: sdk.GetProviderByName(portableFsProvider),
+						Provider: fsProvider,
 						S3Config: vfs.S3FsConfig{
 							BaseS3FsConfig: sdk.BaseS3FsConfig{
 								Bucket:            portableS3Bucket,
@@ -282,8 +282,9 @@ Please take a look at the usage below to customize the serving parameters`,
 								DisableCouncurrentReads: portableSFTPDisableConcurrentReads,
 								BufferSize:              portableSFTPDBufferSize,
 							},
-							Password:   kms.NewPlainSecret(portableSFTPPassword),
-							PrivateKey: kms.NewPlainSecret(portableSFTPPrivateKey),
+							Password:      kms.NewPlainSecret(portableSFTPPassword),
+							PrivateKey:    kms.NewPlainSecret(portableSFTPPrivateKey),
+							KeyPassphrase: kms.NewEmptySecret(),
 						},
 					},
 				},
@@ -522,5 +523,24 @@ func getFileContents(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(contents), nil
+	return util.BytesToString(contents), nil
+}
+
+func convertFsProvider() string {
+	switch portableFsProvider {
+	case "osfs", "6": // httpfs (6) is not supported in portable mode, so return the default
+		return "0"
+	case "s3fs":
+		return "1"
+	case "gcsfs":
+		return "2"
+	case "azblobfs":
+		return "3"
+	case "cryptfs":
+		return "4"
+	case "sftpfs":
+		return "5"
+	default:
+		return portableFsProvider
+	}
 }

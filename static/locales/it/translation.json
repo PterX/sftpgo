@@ -170,6 +170,7 @@
         "api_key_auth_help": "Permetti di impersonarti nelle API REST utilizzando una chiave API",
         "pub_keys": "Chiavi pubbliche",
         "pub_key_placeholder": "Incolla qui una chiave pubblica",
+        "pub_keys_help": "Le chiavi pubbliche possono essere utilizzate per l'autenticazione SFTP",
         "verify": "Verifica",
         "problems": "Hai problemi?",
         "allowed_ip_mask": "IP/Reti permesse",
@@ -360,7 +361,7 @@
             "err_403": "$t(fs.upload.err_generic). $t(fs.err_403)",
             "err_429": "$t(fs.upload.err_generic). $t(fs.err_429)",
             "err_dir_overwrite": "$t(fs.upload.err_generic). Ci sono cartelle con lo stesso nome dei file: {{- val}}",
-            "overwrite_text": "Rilevato conflitto di file. Vuoi sovrascrivere i seguenti file?"
+            "overwrite_text": "Rilevato conflitto. Vuoi sovrascrivere i seguenti file/cartelle?"
         },
         "quota_usage": {
             "title": "Utilizzo quota",
@@ -539,6 +540,7 @@
         "expires_in": "Scadenza",
         "expires_in_help": "Scadenza dell'account espressa in numero di giorni dalla creazione. 0 significa nessuna scadenza",
         "tls_certs": "Certificati TLS",
+        "tls_certs_help": "I certificati TLS possono essere utilizzati per l'autenticazione FTP e/o WebDAV",
         "tls_cert_help": "Incolla qui un tuo certificato TLS codificato PEM",
         "tls_cert_invalid": "Certificato TLS non valido",
         "template_title": "Crea uno o più nuovi utenti da questo modello",
@@ -900,6 +902,7 @@
         "add": "Aggiunta",
         "update": "Aggiornamento",
         "login_failed": "Accesso fallito",
+        "login_ok": "Accesso riuscito",
         "login_missing_user": "Accesso con utente inesistente",
         "no_login_tried": "Nessun accesso tentato",
         "algo_negotiation_failed": "Negoziazione algoritmo fallita",
@@ -983,7 +986,6 @@
         "data_retention": "Conservazione dati",
         "data_retention_help": "Imposta la conservazione dei dati, in ore, per percorso. La conservazione si applica in modo ricorsivo. Impostare 0 come conservazione significa escludere il percorso specificato. \"Ignora permessi utente\" definisce se eliminare i file anche se l'utente non dispone dell'autorizzazione \"delete\", per impostazione predefinita i file verranno ignorati se l'utente non dispone dell'autorizzazione \"delete\"",
         "delete_empty_dirs": "Cancella cartelle vuote",
-        "ignore_user_perms": "Ignora permessi utente",
         "fs_action": "Azione del filesystem",
         "paths_src_dst_help": "Percorsi visti dagli utenti SFTPGo. I segnaposto sono supportati. Le autorizzazioni richieste vengono concesse automaticamente",
         "source_path": "Origine",

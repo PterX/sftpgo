@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"strings"
@@ -1683,7 +1684,7 @@ func (c *BaseConnection) GetOpUnsupportedError() error {
 func getQuotaExceededError(protocol string) error {
 	switch protocol {
 	case ProtocolSFTP:
-		return fmt.Errorf("%w: %v", sftp.ErrSSHFxFailure, ErrQuotaExceeded.Error())
+		return fmt.Errorf("%w: %w", sftp.ErrSSHFxFailure, ErrQuotaExceeded)
 	case ProtocolFTP:
 		return ftpserver.ErrStorageExceeded
 	default:
@@ -1694,7 +1695,7 @@ func getQuotaExceededError(protocol string) error {
 func getReadQuotaExceededError(protocol string) error {
 	switch protocol {
 	case ProtocolSFTP:
-		return fmt.Errorf("%w: %v", sftp.ErrSSHFxFailure, ErrReadQuotaExceeded.Error())
+		return fmt.Errorf("%w: %w", sftp.ErrSSHFxFailure, ErrReadQuotaExceeded)
 	default:
 		return ErrReadQuotaExceeded
 	}
@@ -1728,29 +1729,33 @@ func (c *BaseConnection) IsQuotaExceededError(err error) bool {
 	}
 }
 
+func isSFTPGoError(err error) bool {
+	return errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrNotExist) || errors.Is(err, ErrOpUnsupported) ||
+		errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrReadQuotaExceeded) ||
+		errors.Is(err, vfs.ErrStorageSizeUnavailable) || errors.Is(err, ErrShuttingDown)
+}
+
 // GetGenericError returns an appropriate generic error for the connection protocol
 func (c *BaseConnection) GetGenericError(err error) error {
 	switch c.protocol {
 	case ProtocolSFTP:
-		if err == vfs.ErrStorageSizeUnavailable {
-			return fmt.Errorf("%w: %v", sftp.ErrSSHFxOpUnsupported, err.Error())
+		if errors.Is(err, vfs.ErrStorageSizeUnavailable) || errors.Is(err, ErrOpUnsupported) || errors.Is(err, sftp.ErrSSHFxOpUnsupported) {
+			return fmt.Errorf("%w: %w", sftp.ErrSSHFxOpUnsupported, err)
 		}
-		if err == ErrShuttingDown {
-			return fmt.Errorf("%w: %v", sftp.ErrSSHFxFailure, err.Error())
+		if isSFTPGoError(err) {
+			return fmt.Errorf("%w: %w", sftp.ErrSSHFxFailure, err)
 		}
 		if err != nil {
-			if e, ok := err.(*os.PathError); ok {
-				c.Log(logger.LevelError, "generic path error: %+v", e)
-				return fmt.Errorf("%w: %v %v", sftp.ErrSSHFxFailure, e.Op, e.Err.Error())
+			var pathError *fs.PathError
+			if errors.As(err, &pathError) {
+				c.Log(logger.LevelError, "generic path error: %+v", pathError)
+				return fmt.Errorf("%w: %v %v", sftp.ErrSSHFxFailure, pathError.Op, pathError.Err.Error())
 			}
 			c.Log(logger.LevelError, "generic error: %+v", err)
-			return fmt.Errorf("%w: %v", sftp.ErrSSHFxFailure, ErrGenericFailure.Error())
 		}
 		return sftp.ErrSSHFxFailure
 	default:
-		if errors.Is(err, ErrPermissionDenied) || errors.Is(err, ErrNotExist) || errors.Is(err, ErrOpUnsupported) ||
-			errors.Is(err, ErrQuotaExceeded) || errors.Is(err, ErrReadQuotaExceeded) ||
-			errors.Is(err, vfs.ErrStorageSizeUnavailable) || errors.Is(err, ErrShuttingDown) {
+		if isSFTPGoError(err) {
 			return err
 		}
 		c.Log(logger.LevelError, "generic error: %+v", err)
