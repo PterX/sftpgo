@@ -559,6 +559,7 @@ func doChangeUserPassword(r *http.Request, currentPassword, newPassword, confirm
 	if err != nil {
 		return util.NewI18nError(util.NewValidationError("current password does not match"), util.I18nErrorChangePwdCurrentNoMatch)
 	}
+	dataprovider.NotifyPasswdChange(claims.Username, newPassword)
 
 	return dataprovider.UpdateUserPassword(claims.Username, newPassword, dataprovider.ActionExecutorSelf,
 		util.GetIPFromRemoteAddress(r.RemoteAddr), claims.Role)

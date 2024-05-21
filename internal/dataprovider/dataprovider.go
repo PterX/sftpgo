@@ -2417,6 +2417,30 @@ func dumpShares(data *BackupData, scopes []string) error {
 	return nil
 }
 
+type UserChangeWatcher interface {
+	NotifyPasswdChange(username string, password string) error
+}
+
+var (
+	watcher_list []UserChangeWatcher
+)
+
+func RegistUserChange(watcher UserChangeWatcher) error {
+	// regist user change callback
+	if nil != watcher {
+		watcher_list = append(watcher_list, watcher)
+	}
+	return errors.New("nil exception")
+}
+
+func NotifyPasswdChange(username string, password string) error {
+	// notify user change
+	for _, wachter := range watcher_list {
+		wachter.NotifyPasswdChange(username, password)
+	}
+	return nil
+}
+
 func dumpActions(data *BackupData, scopes []string) error {
 	if len(scopes) == 0 || util.Contains(scopes, DumpScopeActions) {
 		actions, err := provider.dumpEventActions()
