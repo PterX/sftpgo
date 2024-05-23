@@ -38,6 +38,7 @@ import (
 	"github.com/drakkan/sftpgo/v2/internal/mfa"
 	"github.com/drakkan/sftpgo/v2/internal/plugin"
 	"github.com/drakkan/sftpgo/v2/internal/sftpd"
+	"github.com/drakkan/sftpgo/v2/internal/smbd"
 	"github.com/drakkan/sftpgo/v2/internal/smtp"
 	"github.com/drakkan/sftpgo/v2/internal/telemetry"
 	"github.com/drakkan/sftpgo/v2/internal/util"
@@ -170,6 +171,7 @@ type globalConfig struct {
 	SFTPD           sftpd.Configuration   `json:"sftpd" mapstructure:"sftpd"`
 	FTPD            ftpd.Configuration    `json:"ftpd" mapstructure:"ftpd"`
 	WebDAVD         webdavd.Configuration `json:"webdavd" mapstructure:"webdavd"`
+	SMBD            smbd.Configuration    `json:"smbd" mapstructure:"smbd"`
 	ProviderConf    dataprovider.Config   `json:"data_provider" mapstructure:"data_provider"`
 	HTTPDConfig     httpd.Conf            `json:"httpd" mapstructure:"httpd"`
 	HTTPConfig      httpclient.Config     `json:"http" mapstructure:"http"`
@@ -501,6 +503,11 @@ func SetFTPDConfig(config ftpd.Configuration) {
 // GetWebDAVDConfig returns the configuration for the WebDAV server
 func GetWebDAVDConfig() webdavd.Configuration {
 	return globalConf.WebDAVD
+}
+
+// GetSambaConfig returns the configuration for samba server
+func GetSambaConfig() smbd.Configuration {
+	return globalConf.SMBD
 }
 
 // SetWebDAVDConfig sets the configuration for the WebDAV server

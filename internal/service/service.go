@@ -213,6 +213,7 @@ func (s *Service) startServices() {
 	httpdConf := config.GetHTTPDConfig()
 	webDavDConf := config.GetWebDAVDConfig()
 	telemetryConf := config.GetTelemetryConfig()
+	smbdConf := config.GetSambaConfig()
 
 	if sftpdConf.ShouldBind() {
 		go func() {
@@ -228,6 +229,17 @@ func (s *Service) startServices() {
 		}()
 	} else {
 		logger.Info(logSender, "", "SFTP server not started, disabled in config file")
+	}
+
+	if smbdConf.ShouldBind() {
+		go func() {
+			if err := smbdConf.Initialize(s.ConfigDir); err != nil {
+				logger.Error(logSender, "", "could not start SMB server: %v", err)
+				logger.ErrorToConsole("could not start SMB server: %v", err)
+			}
+		}()
+	} else {
+		logger.Info(logSender, "", "SMB server not started, disable in config file")
 	}
 
 	if httpdConf.ShouldBind() {

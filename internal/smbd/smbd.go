@@ -17,6 +17,7 @@ const (
 
 var (
 	serviceStatus ServiceStatus
+	serverList    []*smb2.Server
 )
 
 type Binding struct {
@@ -60,6 +61,9 @@ func (c *Configuration) loadFromProvider() error {
 
 // 用户信息变更回调
 func (c *Configuration) NotifyPasswdChange(username string, password string) error {
+	for _, svr := range serverList {
+		svr.ChangePasswd(username, password)
+	}
 	return nil
 }
 
@@ -113,6 +117,7 @@ func (c *Configuration) Initialize(configDir string) error {
 				},
 				map[string]vfs.VFSFileSystem{cfg.ShareName: NewPassthroughFS(cfg.MountDir)},
 			)
+			serverList = append(serverList, srv)
 
 			logger.Info(logSender, "Starting server at %s", binding.Address)
 			exitChannel <- srv.Serve(cfg.ListenAddr)
